@@ -3,6 +3,7 @@ import org.http4s.dsl._
 import org.http4s.server.{Server, ServerApp}
 import org.http4s.server.blaze.BlazeBuilder
 import org.http4s.headers.`Content-Type`
+import org.log4s.getLogger
 
 import scala.util.Properties.envOrNone
 import scalatags.Text.{Modifier, attrs => A, tags => H, tags2 => H2}
@@ -40,6 +41,8 @@ object Config {
 }
 
 object Main extends ServerApp {
+  private val logger = getLogger
+
   implicit val scalatagsHtmlEncoder: EntityEncoder[Modifier] =
     EntityEncoder[String].contramap[Modifier] { htmlFrag =>
       htmlFrag.toString
@@ -67,8 +70,13 @@ object Main extends ServerApp {
     Ok(helloView(name))
   }
 
-  val service = HttpService {
+  val routes = HttpService {
     case r @ GET -> Root / "hello" / name => helloService(name)(r)
+  }
+
+  val service: HttpService = routes.local { req =>
+    logger.info(s"${req.remoteAddr.getOrElse("null")} -> ${req.method}: ${req.uri.path} ${req.uri.query}")
+    req
   }
 
   override def server(args: List[String]): Task[Server] = {
