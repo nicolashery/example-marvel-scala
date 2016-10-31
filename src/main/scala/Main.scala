@@ -4,9 +4,40 @@ import org.http4s.server.{Server, ServerApp}
 import org.http4s.server.blaze.BlazeBuilder
 import org.http4s.headers.`Content-Type`
 
+import scala.util.Properties.envOrNone
 import scalatags.Text.{Modifier, attrs => A, tags => H, tags2 => H2}
 import scalatags.Text.implicits._
 import scalaz.concurrent.Task
+
+case class Config(
+  port: Int,
+  marvelPublicKey: String,
+  marvelPrivateKey: String
+)
+
+object Config {
+  def fromEnv(): Task[Config] = {
+    val port = envOrNone("PORT")
+      .map(_.toInt)
+      .getOrElse(3000)
+
+    for {
+      marvelPublicKey <- envOrFail("MARVEL_PUBLIC_KEY")
+      marvelPrivateKey <- envOrFail("MARVEL_PRIVATE_KEY")
+    } yield Config(
+      port = port,
+      marvelPublicKey = marvelPublicKey,
+      marvelPrivateKey = marvelPrivateKey
+    )
+  }
+
+  private def envOrFail(key: String): Task[String] = {
+    envOrNone(key) match {
+      case Some(value) => Task.now(value)
+      case None => Task.fail(new Exception(s"Environment variable not set $key"))
+    }
+  }
+}
 
 object Main extends ServerApp {
   implicit val scalatagsHtmlEncoder: EntityEncoder[Modifier] =
@@ -41,9 +72,12 @@ object Main extends ServerApp {
   }
 
   override def server(args: List[String]): Task[Server] = {
-    BlazeBuilder
-      .bindHttp(8080, "localhost")
-      .mountService(service)
-      .start
+    for {
+      config <- Config.fromEnv()
+      server <- BlazeBuilder
+        .bindHttp(config.port, "localhost")
+        .mountService(service)
+        .start
+    } yield server
   }
 }
